@@ -204,7 +204,10 @@ struct SpeciesDetailView: View {
                                     .foregroundColor(.gray)
                             }
                             
-                            Button(action: { dismiss() }) {
+                            Button(action: { 
+                                dismiss()
+                                service.selectedTab = .favorites
+                            }) {
                                 Text("Yay!")
                                     .font(.headline.bold())
                                     .foregroundColor(.white)

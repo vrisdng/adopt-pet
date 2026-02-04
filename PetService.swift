@@ -52,6 +52,7 @@ struct GeneratedNewsItem: Codable {
     let source: String
     let url: String
     let sentiment: String
+    let practical_tip: String?
 }
 
 @MainActor
@@ -61,6 +62,8 @@ class PetService: ObservableObject {
     @Published var speciesNews: [UUID: [NewsItem]] = [:]
     @Published var isTabBarHidden: Bool = false
     @Published var activeGreetings: [UUID: String] = [:]
+    @Published var pendingNewsContext: NewsItem? // Context for chat
+    @Published var selectedTab: AppTab = .home
     
     init() {
         loadMockData()
@@ -334,6 +337,7 @@ class PetService: ObservableObject {
         - "source": The publisher name or "General Knowledge".
         - "url": The direct web link to the article (or an empty string if general fact).
         - "sentiment": One of "Positive", "Negative", or "Neutral".
+        - "practical_tip": A specific, simple daily action the user can do to help related to this issue (e.g. "Turn off lights", "Buy local"). Do not suggest donating or sharing.
         """
         
         do {
@@ -356,7 +360,8 @@ class PetService: ObservableObject {
                     date: Date(),
                     sentiment: Sentiment(rawValue: item.sentiment) ?? .neutral,
                     source: item.source,
-                    url: item.url.isEmpty ? nil : item.url
+                    url: item.url.isEmpty ? nil : item.url,
+                    practicalTip: item.practical_tip
                 )
             }
             
@@ -368,7 +373,8 @@ class PetService: ObservableObject {
                     date: Date(),
                     sentiment: .positive,
                     source: "Eco Knowledge",
-                    url: "https://www.google.com/search?q=\(species.name.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")"
+                    url: "https://www.google.com/search?q=\(species.name.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")",
+                    practicalTip: "Learn more about local wildlife in your area."
                 ))
             }
             

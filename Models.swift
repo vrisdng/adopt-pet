@@ -44,6 +44,11 @@ struct NewsItem: Identifiable, Codable {
     let sentiment: Sentiment
     let source: String
     let url: String?
+    let practicalTip: String?
+}
+
+enum AppTab {
+    case home, favorites, chat, profile
 }
 
 struct SuggestedAction: Identifiable, Codable {

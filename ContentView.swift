@@ -15,19 +15,14 @@ struct ContentView: View {
 }
 
 struct MainAppView: View {
-    @State private var selectedTab: Tab = .home
     @EnvironmentObject var service: PetService
-    
-    enum Tab {
-        case home, favorites, chat, profile
-    }
     
     var body: some View {
         ZStack(alignment: .bottom) {
             Color.brandNeutral.ignoresSafeArea()
             
             Group {
-                switch selectedTab {
+                switch service.selectedTab {
                 case .home:
                     SelectionView()
                 case .favorites:
@@ -43,20 +38,20 @@ struct MainAppView: View {
             // Custom Floating Tab Bar
             if !service.isTabBarHidden {
                 HStack {
-                    TabBarButton(icon: "house", text: "Home", isSelected: selectedTab == .home) {
-                        selectedTab = .home
+                    TabBarButton(icon: "house", text: "Home", isSelected: service.selectedTab == .home) {
+                        service.selectedTab = .home
                     }
                     
-                    TabBarButton(icon: "heart", text: "Saved", isSelected: selectedTab == .favorites) {
-                        selectedTab = .favorites
+                    TabBarButton(icon: "heart", text: "Saved", isSelected: service.selectedTab == .favorites) {
+                        service.selectedTab = .favorites
                     }
                     
-                    TabBarButton(icon: "newspaper", text: "News", isSelected: selectedTab == .chat) {
-                        selectedTab = .chat
+                    TabBarButton(icon: "newspaper", text: "News", isSelected: service.selectedTab == .chat) {
+                        service.selectedTab = .chat
                     }
                     
-                    TabBarButton(icon: "person", text: "Profile", isSelected: selectedTab == .profile) {
-                        selectedTab = .profile
+                    TabBarButton(icon: "person", text: "Profile", isSelected: service.selectedTab == .profile) {
+                        service.selectedTab = .profile
                     }
                 }
                 .padding(.horizontal, 8)

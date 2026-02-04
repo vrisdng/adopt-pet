@@ -76,7 +76,16 @@ struct ChatView: View {
         .navigationTitle(pet.name)
         .onAppear {
             service.isTabBarHidden = true
-            if messages.isEmpty {
+            
+            if let context = service.pendingNewsContext {
+                // Start conversation about the selected news
+                Task {
+                    let prompt = "The user wants to discuss this news article: \"\(context.title)\". The summary is: \(context.content). Start the conversation by sharing your feelings about this news and asking the user what they think. Be personal."
+                    let response = await service.generateAIResponse(for: pet, userMessage: prompt)
+                    messages.append(Message(text: response, isUser: false))
+                    service.pendingNewsContext = nil // Clear context
+                }
+            } else if messages.isEmpty {
                 messages.append(Message(text: "Hi! I'm \(pet.name), your \(pet.species.name). \(pet.persona)", isUser: false))
             }
         }
