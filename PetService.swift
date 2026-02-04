@@ -3,14 +3,34 @@ import Foundation
 // Gemini REST API Request/Response Structures
 struct GeminiRequest: Codable {
     let contents: [GeminiContent]
+    var tools: [GeminiTool]? = nil
+    var generationConfig: GeminiGenerationConfig? = nil
 }
 
 struct GeminiContent: Codable {
     let parts: [GeminiPart]
+    let role: String?
+    
+    init(parts: [GeminiPart], role: String? = "user") {
+        self.parts = parts
+        self.role = role
+    }
 }
 
 struct GeminiPart: Codable {
     let text: String
+}
+
+struct GeminiTool: Codable {
+    let googleSearch: GoogleSearch?
+}
+
+struct GoogleSearch: Codable {
+    // Empty for default behavior
+}
+
+struct GeminiGenerationConfig: Codable {
+    let responseMimeType: String
 }
 
 struct GeminiResponse: Codable {
@@ -21,15 +41,33 @@ struct GeminiCandidate: Codable {
     let content: GeminiContent?
 }
 
+// Structure for parsing Gemini's JSON output
+struct GeneratedNewsResponse: Codable {
+    let news: [GeneratedNewsItem]
+}
+
+struct GeneratedNewsItem: Codable {
+    let title: String
+    let summary: String
+    let source: String
+    let url: String
+    let sentiment: String
+}
+
 @MainActor
 class PetService: ObservableObject {
     @Published var availableSpecies: [Species] = []
     @Published var adoptedPets: [Pet] = []
     @Published var speciesNews: [UUID: [NewsItem]] = [:]
     @Published var isTabBarHidden: Bool = false
+    @Published var activeGreetings: [UUID: String] = [:]
     
     init() {
         loadMockData()
+    }
+    
+    func clearGreeting(for pet: Pet) {
+        activeGreetings.removeValue(forKey: pet.id)
     }
     
     // Helper function to call Gemini REST API
@@ -120,7 +158,8 @@ class PetService: ObservableObject {
 
         availableSpecies = [polarBear, giantPanda, seaTurtle, kakapo]
         
-        // Mock News
+        // Mock News - Commented out to test real API
+        /*
         speciesNews = [
             polarBear.id: [
                 NewsItem(id: UUID(), title: "Sea Ice Extent Grows", content: "Recent satellite data shows a slight increase in Arctic sea ice extent this winter, providing more hunting grounds for polar bears.", date: Date(), sentiment: .positive, source: "Arctic Watch"),
@@ -130,11 +169,12 @@ class PetService: ObservableObject {
                 NewsItem(id: UUID(), title: "New Panda Park Opens", content: "A new national park dedicated to Giant Panda conservation has opened in China, connecting fragmented habitats.", date: Date(), sentiment: .positive, source: "Panda Conservation")
             ]
         ]
+        */
     }
     
-    func adopt(species: Species, name: String) {
+    func adopt(species: Species, name: String) -> Pet? {
         guard !adoptedPets.contains(where: { $0.species.id == species.id }) else {
-            return
+            return nil
         }
 
         let newPet = Pet(
@@ -147,6 +187,13 @@ class PetService: ObservableObject {
             health: 0.8
         )
         adoptedPets.append(newPet)
+        
+        // Auto-fetch news for the new friend
+        Task {
+            await fetchNews(for: species)
+        }
+        
+        return newPet
     }
     
     func performAction(_ action: PetAction, for pet: Pet) {
@@ -204,39 +251,163 @@ class PetService: ObservableObject {
     }
     
     func generateGreeting(for pet: Pet) async -> String {
-        // Find latest news for this species
-        let newsList = speciesNews[pet.species.id] ?? []
-        let latestNews = newsList.sorted(by: { $0.date > $1.date }).first
-        
-        let newsContext: String
-        if let news = latestNews {
-            newsContext = "Latest news headline: \"\(news.title)\". Sentiment: \(news.sentiment.rawValue)."
-        } else {
-            newsContext = "There is no specific recent news."
+        // Return existing sticky greeting if available
+        if let existing = activeGreetings[pet.id] {
+            return existing
         }
         
-        let prompt = """
-        You are \(pet.name), a \(pet.species.name).
-        Your current happiness is \(Int(pet.happiness * 100))%.
-        \(newsContext)
+        // Define personality nuances
+        let personalityInstruction: String
+        if pet.species.name == "Polar Bear" {
+            personalityInstruction = """
+            Personality: You are shy, soft-spoken, and curious, but very affectionate once you open up.
+            Tone: Use gentle language. You might hesitate slightly (e.g., 'um...', 'maybe...') or express curiosity.
+            Example: "Um... hi there! I was just wondering... are you here to play?"
+            """
+        } else {
+            personalityInstruction = "Personality: \(pet.persona)"
+        }
         
-        Write a short, single-sentence greeting (max 15 words) to display in a speech bubble to your owner.
+        // Check for latest news
+        let newsList = speciesNews[pet.species.id] ?? []
+        let latestNews = newsList.first
         
-        Rules:
-        1. If the latest news is Negative, you MUST mention it briefly and sound sad or worried.
-        2. If the latest news is Positive, sound excited about it.
-        3. If there is no significant news, reflect your happiness level:
-           - Low happiness (< 40%): Sound sad or ask for food/play.
-           - High happiness (> 70%): Sound happy and energetic.
-           - Medium happiness: Friendly and calm.
-        """
+        let prompt: String
+        
+        if let news = latestNews {
+            // FORCE News Greeting with Personality
+            prompt = """
+            You are \(pet.name), a \(pet.species.name).
+            \(personalityInstruction)
+            Latest news about your species: "\(news.title)".
+            Sentiment: \(news.sentiment.rawValue).
+            
+            Write a short greeting (max 15 words) specifically about this news.
+            REQUIRED: You MUST include a Markdown link to the news using exactly this format: `[summary of news](app://news)`.
+            Example: "Um... did you hear? [Polar bears are recovering](app://news)... that's good, right?"
+            """
+        } else {
+            // Standard Random Greeting with Personality
+            prompt = """
+            You are \(pet.name), a \(pet.species.name).
+            \(personalityInstruction)
+            Your current happiness is \(Int(pet.happiness * 100))%.
+            
+            Write a short, single-sentence greeting (max 15 words) to your owner.
+            Be creative and varied!
+            """
+        }
         
         do {
             let responseText = try await callGeminiAPI(prompt: prompt)
-            return responseText.trimmingCharacters(in: .whitespacesAndNewlines)
+            let cleanText = responseText.trimmingCharacters(in: .whitespacesAndNewlines)
+            
+            // Only stick the greeting if it's a news greeting (contains the link)
+            if cleanText.contains("app://news") {
+                DispatchQueue.main.async {
+                    self.activeGreetings[pet.id] = cleanText
+                }
+            }
+            
+            return cleanText
         } catch {
             print("Error generating greeting: \(error)")
             return "Hello friend!"
         }
+    }
+    
+    func fetchNews(for species: Species, force: Bool = false) async {
+        // Skip if already populated and not a forced refresh
+        if !force, let existingNews = speciesNews[species.id], !existingNews.isEmpty {
+            print("News for \(species.name) already populated, skipping fetch.")
+            return
+        }
+        
+        print("Fetching news for \(species.name)...")
+        let prompt = """
+        Find 3 news articles, interesting facts, or conservation updates about the species: "\(species.name)".
+        
+        Return a JSON object with a list of items under the key "news".
+        For each item, include:
+        - "title": The headline or fact title.
+        - "summary": A 1-sentence summary.
+        - "source": The publisher name or "General Knowledge".
+        - "url": The direct web link to the article (or an empty string if general fact).
+        - "sentiment": One of "Positive", "Negative", or "Neutral".
+        """
+        
+        do {
+            let jsonString = try await callGeminiForNews(prompt: prompt)
+            print("DEBUG: Raw JSON from Gemini: \(jsonString)")
+            
+            // Clean up the response if it contains markdown code blocks
+            let cleanJson = jsonString.replacingOccurrences(of: "```json", with: "")
+                                      .replacingOccurrences(of: "```", with: "")
+            
+            guard let data = cleanJson.data(using: .utf8) else { return }
+            let response = try JSONDecoder().decode(GeneratedNewsResponse.self, from: data)
+            
+            // Map to App Models
+            var newItems = response.news.map { item in
+                NewsItem(
+                    id: UUID(),
+                    title: item.title,
+                    content: item.summary,
+                    date: Date(),
+                    sentiment: Sentiment(rawValue: item.sentiment) ?? .neutral,
+                    source: item.source,
+                    url: item.url.isEmpty ? nil : item.url
+                )
+            }
+            
+            if newItems.isEmpty {
+                newItems.append(NewsItem(
+                    id: UUID(),
+                    title: "Did you know?",
+                    content: "\(species.name) is a fascinating species found in \(species.habitat). Help protect them!",
+                    date: Date(),
+                    sentiment: .positive,
+                    source: "Eco Knowledge",
+                    url: "https://www.google.com/search?q=\(species.name.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")"
+                ))
+            }
+            
+            DispatchQueue.main.async {
+                self.speciesNews[species.id] = newItems
+            }
+            print("Fetched \(newItems.count) news items for \(species.name)")
+            
+        } catch {
+            print("Error fetching news: \(error)")
+        }
+    }
+
+    private func callGeminiForNews(prompt: String) async throws -> String {
+        let modelName = "gemini-2.0-flash"
+        let urlString = "https://generativelanguage.googleapis.com/v1beta/models/\(modelName):generateContent?key=\(Secrets.apiKey)"
+        
+        guard let url = URL(string: urlString) else { throw URLError(.badURL) }
+        
+        let tool = GeminiTool(googleSearch: GoogleSearch())
+        
+        let requestBody = GeminiRequest(
+            contents: [GeminiContent(parts: [GeminiPart(text: prompt)])],
+            tools: [tool]
+        )
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(requestBody)
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            print("Gemini News API Error: \(String(data: data, encoding: .utf8) ?? "Unknown")")
+            throw URLError(.badServerResponse)
+        }
+        
+        let geminiResponse = try JSONDecoder().decode(GeminiResponse.self, from: data)
+        return geminiResponse.candidates?.first?.content?.parts.first?.text ?? "{ \"news\": [] }"
     }
 }

@@ -7,6 +7,7 @@ struct SpeciesDetailView: View {
         @State private var showingAdoptionAlert = false
         @State private var showingNamePrompt = false
         @State private var alreadyAdopted = false
+        @State private var adoptedPet: Pet?
         @Environment(\.dismiss) var dismiss
         
         var body: some View {
@@ -170,15 +171,56 @@ struct SpeciesDetailView: View {
             .alert("Name your new friend", isPresented: $showingNamePrompt) {
                 TextField("Enter name", text: $petName)
                 Button("Adopt") {
-                    service.adopt(species: species, name: petName.isEmpty ? species.name : petName)
-                    showingAdoptionAlert = true
+                    if let newPet = service.adopt(species: species, name: petName.isEmpty ? species.name : petName) {
+                        withAnimation {
+                            adoptedPet = newPet
+                        }
+                    }
                 }
                 Button("Cancel", role: .cancel) { }
             }
-            .alert("Adopted!", isPresented: $showingAdoptionAlert) {
-                Button("Yay!") { dismiss() }
-            } message: {
-                Text("You have successfully adopted \(petName.isEmpty ? species.name : petName).")
+            .overlay {
+                if let pet = adoptedPet {
+                    ZStack {
+                        Color.black.opacity(0.4).ignoresSafeArea()
+                        
+                        VStack(spacing: 24) {
+                            Image(pet.species.thumbnail)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 120, height: 120)
+                                .clipShape(Circle())
+                                .overlay(Circle().stroke(Color.white, lineWidth: 4))
+                                .shadow(radius: 10)
+                            
+                            VStack(spacing: 8) {
+                                Text("Thank you for being my friend!")
+                                    .font(.title3.bold())
+                                    .multilineTextAlignment(.center)
+                                    .foregroundColor(.brandAccent)
+                                
+                                Text("I promise to be a good \(pet.species.name).")
+                                    .font(.subheadline)
+                                    .foregroundColor(.gray)
+                            }
+                            
+                            Button(action: { dismiss() }) {
+                                Text("Yay!")
+                                    .font(.headline.bold())
+                                    .foregroundColor(.white)
+                                    .frame(width: 120)
+                                    .padding()
+                                    .background(Color.brandPrimary)
+                                    .cornerRadius(30)
+                            }
+                        }
+                        .padding(30)
+                        .background(Color.white)
+                        .cornerRadius(24)
+                        .shadow(radius: 20)
+                        .padding(.horizontal, 40)
+                    }
+                }
             }
     }
 }

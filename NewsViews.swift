@@ -33,7 +33,19 @@ struct NewsItemRow: View {
             
             Text("Source: \(item.source)")
                 .font(.caption)
-                .foregroundColor(.brandPrimary)        }
+                .foregroundColor(.brandPrimary)
+            
+            if let urlString = item.url, let url = URL(string: urlString) {
+                Link(destination: url) {
+                    HStack {
+                        Text("Read More")
+                        Image(systemName: "arrow.up.right")
+                    }
+                    .font(.caption.bold())
+                    .foregroundColor(.brandPrimary)
+                }
+            }
+        }
         .padding(.vertical, 8)
     }
     
@@ -49,6 +61,7 @@ struct NewsItemRow: View {
 struct SpeciesNewsView: View {
     let species: Species
     @EnvironmentObject var service: PetService
+    @State private var isLoading = false
     
     var news: [NewsItem] {
         service.speciesNews[species.id] ?? []
@@ -56,8 +69,17 @@ struct SpeciesNewsView: View {
     
     var body: some View {
         List {
-            if news.isEmpty {
-                Text("No recent news for \(species.name).")
+            if isLoading {
+                HStack {
+                    Spacer()
+                    ProgressView("Checking latest news...")
+                    Spacer()
+                }
+                .listRowSeparator(.hidden)
+            }
+            
+            if news.isEmpty && !isLoading {
+                Text("No recent news found for \(species.name).")
                     .foregroundColor(.secondary)
             } else {
                 ForEach(news) { item in
@@ -91,8 +113,31 @@ struct SpeciesNewsView: View {
             }
         }
         .navigationTitle("\(species.name) News")
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button {
+                    refreshNews()
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .disabled(isLoading)
+            }
+        }
         .onAppear {
             service.isTabBarHidden = true
+            
+            // Only fetch if news is missing
+            if service.speciesNews[species.id]?.isEmpty ?? true {
+                refreshNews()
+            }
+        }
+    }
+    
+    private func refreshNews() {
+        isLoading = true
+        Task {
+            await service.fetchNews(for: species, force: true)
+            isLoading = false
         }
     }
 }

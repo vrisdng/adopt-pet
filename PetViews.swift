@@ -96,10 +96,40 @@ struct ChatView: View {
     }
 }
 
+struct FloatingHeartData: Identifiable {
+    let id = UUID()
+    let x: CGFloat
+}
+
+struct FloatingHeart: View {
+    let data: FloatingHeartData
+    var onFinish: () -> Void
+    
+    @State private var offset: CGFloat = 0
+    @State private var opacity: Double = 1.0
+    
+    var body: some View {
+        Text("❤️")
+            .font(.largeTitle)
+            .offset(x: data.x, y: offset)
+            .opacity(opacity)
+            .onAppear {
+                withAnimation(.easeOut(duration: 1.5)) {
+                    offset = -100
+                    opacity = 0
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                    onFinish()
+                }
+            }
+    }
+}
+
 struct PetProfileView: View {
     let petId: UUID
     @EnvironmentObject var service: PetService
-    @State private var greeting: String?
+    @State private var hearts: [FloatingHeartData] = []
+    @State private var navigateToNews = false
     
     var pet: Pet? {
         service.adoptedPets.first(where: { $0.id == petId })
@@ -112,6 +142,10 @@ struct PetProfileView: View {
                     VStack(spacing: 24) {
                         // AI Avatar Placeholder
                         ZStack(alignment: .topTrailing) {
+                            NavigationLink(isActive: $navigateToNews) {
+                                SpeciesNewsView(species: pet.species)
+                            } label: { EmptyView() }
+                            
                             Circle()
                                 .fill(Color.brandPrimary.opacity(0.1))
                                 .frame(width: 150, height: 150)
@@ -122,16 +156,31 @@ struct PetProfileView: View {
                                 .frame(width: 150, height: 150)
                                 .clipShape(Circle())
                             
-                            if let greeting = greeting {
-                                Text(greeting)
+                            ForEach(hearts) { heart in
+                                FloatingHeart(data: heart) {
+                                    hearts.removeAll(where: { $0.id == heart.id })
+                                }
+                            }
+                            
+                            if let greeting = service.activeGreetings[pet.id] {
+                                Text(.init(greeting))
                                     .font(.caption)
                                     .padding(8)
                                     .background(Color.white)
                                     .foregroundColor(.primary)
+                                    .tint(.brandPrimary)
                                     .cornerRadius(12)
                                     .shadow(color: .black.opacity(0.1), radius: 3, x: 0, y: 2)
                                     .frame(width: 140)
                                     .offset(x: 40, y: -20)
+                                    .environment(\.openURL, OpenURLAction { url in
+                                        if url.absoluteString == "app://news" {
+                                            service.clearGreeting(for: pet) // Clear sticky greeting
+                                            navigateToNews = true
+                                            return .handled
+                                        }
+                                        return .systemAction
+                                    })
                             }
                         }
                         .padding(.top)
@@ -165,12 +214,15 @@ struct PetProfileView: View {
                         HStack(spacing: 30) {
                             ActionButton(icon: "fork.knife", text: "Feed") {
                                 service.performAction(.feed, for: pet)
+                                showHeart()
                             }
                             ActionButton(icon: "figure.play", text: "Play") {
                                 service.performAction(.play, for: pet)
+                                showHeart()
                             }
                             ActionButton(icon: "hand.wave", text: "Pat") {
                                 service.performAction(.pat, for: pet)
+                                showHeart()
                             }
                         }
                         .padding(.vertical)
@@ -216,9 +268,9 @@ struct PetProfileView: View {
                 .navigationTitle("Pet Profile")
                 .onAppear {
                     service.isTabBarHidden = true
-                    if greeting == nil {
+                    if service.activeGreetings[pet.id] == nil {
                         Task {
-                            greeting = await service.generateGreeting(for: pet)
+                            await service.generateGreeting(for: pet)
                         }
                     }
                 }
@@ -226,6 +278,11 @@ struct PetProfileView: View {
                 Text("Pet not found")
             }
         }
+    }
+    
+    private func showHeart() {
+        let randomX = CGFloat.random(in: -40...40)
+        hearts.append(FloatingHeartData(x: randomX))
     }
 }
 
@@ -293,6 +350,12 @@ struct MyPetsView: View {
             .navigationTitle("My Pets")
             .onAppear {
                 service.isTabBarHidden = false
+                // Pre-fetch news for all adopted pets
+                for pet in service.adoptedPets {
+                    Task {
+                        await service.fetchNews(for: pet.species)
+                    }
+                }
             }
         }
     }

@@ -43,6 +43,7 @@ struct NewsItem: Identifiable, Codable {
     let date: Date
     let sentiment: Sentiment
     let source: String
+    let url: String?
 }
 
 struct SuggestedAction: Identifiable, Codable {
