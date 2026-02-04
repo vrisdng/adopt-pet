@@ -372,6 +372,12 @@ class PetService: ObservableObject {
                 ))
             }
             
+            // Sort by sentiment: Negative > Neutral > Positive
+            newItems.sort { item1, item2 in
+                let priority: [Sentiment: Int] = [.negative: 0, .neutral: 1, .positive: 2]
+                return priority[item1.sentiment, default: 1] < priority[item2.sentiment, default: 1]
+            }
+            
             DispatchQueue.main.async {
                 self.speciesNews[species.id] = newItems
             }
