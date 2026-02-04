@@ -99,6 +99,7 @@ struct ChatView: View {
 struct PetProfileView: View {
     let petId: UUID
     @EnvironmentObject var service: PetService
+    @State private var greeting: String?
     
     var pet: Pet? {
         service.adoptedPets.first(where: { $0.id == petId })
@@ -110,7 +111,7 @@ struct PetProfileView: View {
                 ScrollView {
                     VStack(spacing: 24) {
                         // AI Avatar Placeholder
-                        ZStack {
+                        ZStack(alignment: .topTrailing) {
                             Circle()
                                 .fill(Color.brandPrimary.opacity(0.1))
                                 .frame(width: 150, height: 150)
@@ -120,6 +121,18 @@ struct PetProfileView: View {
                                 .scaledToFill()
                                 .frame(width: 150, height: 150)
                                 .clipShape(Circle())
+                            
+                            if let greeting = greeting {
+                                Text(greeting)
+                                    .font(.caption)
+                                    .padding(8)
+                                    .background(Color.white)
+                                    .foregroundColor(.primary)
+                                    .cornerRadius(12)
+                                    .shadow(color: .black.opacity(0.1), radius: 3, x: 0, y: 2)
+                                    .frame(width: 140)
+                                    .offset(x: 40, y: -20)
+                            }
                         }
                         .padding(.top)
                         
@@ -203,6 +216,11 @@ struct PetProfileView: View {
                 .navigationTitle("Pet Profile")
                 .onAppear {
                     service.isTabBarHidden = true
+                    if greeting == nil {
+                        Task {
+                            greeting = await service.generateGreeting(for: pet)
+                        }
+                    }
                 }
             } else {
                 Text("Pet not found")

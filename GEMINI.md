@@ -1,0 +1,1 @@
+Never use swift build.

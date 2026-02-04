@@ -1,5 +1,26 @@
 import Foundation
 
+// Gemini REST API Request/Response Structures
+struct GeminiRequest: Codable {
+    let contents: [GeminiContent]
+}
+
+struct GeminiContent: Codable {
+    let parts: [GeminiPart]
+}
+
+struct GeminiPart: Codable {
+    let text: String
+}
+
+struct GeminiResponse: Codable {
+    let candidates: [GeminiCandidate]?
+}
+
+struct GeminiCandidate: Codable {
+    let content: GeminiContent?
+}
+
 @MainActor
 class PetService: ObservableObject {
     @Published var availableSpecies: [Species] = []
@@ -9,6 +30,35 @@ class PetService: ObservableObject {
     
     init() {
         loadMockData()
+    }
+    
+    // Helper function to call Gemini REST API
+    private func callGeminiAPI(prompt: String) async throws -> String {
+        let modelName = "gemini-2.0-flash" 
+        let urlString = "https://generativelanguage.googleapis.com/v1beta/models/\(modelName):generateContent?key=\(Secrets.apiKey)"
+        
+        guard let url = URL(string: urlString) else {
+            throw URLError(.badURL)
+        }
+        
+        let requestBody = GeminiRequest(contents: [
+            GeminiContent(parts: [GeminiPart(text: prompt)])
+        ])
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(requestBody)
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            print("Gemini API Error: \(String(data: data, encoding: .utf8) ?? "Unknown error")")
+            throw URLError(.badServerResponse)
+        }
+        
+        let geminiResponse = try JSONDecoder().decode(GeminiResponse.self, from: data)
+        return geminiResponse.candidates?.first?.content?.parts.first?.text ?? "I have no words."
     }
     
     private func loadMockData() {
@@ -135,26 +185,58 @@ class PetService: ObservableObject {
     }
     
     func generateAIResponse(for pet: Pet, userMessage: String) async -> String {
-        // Mock AI Response with simple logic to simulate personality
-        try? await Task.sleep(nanoseconds: 1 * 1_000_000_000)
+        let prompt = """
+        You are \(pet.name), a \(pet.species.name) from \(pet.species.habitat). 
+        Your persona is: \(pet.persona)
+        The user says: "\(userMessage)"
         
-        let message = userMessage.lowercased()
-        let greeting = ["hi", "hello", "hey", "greetings"]
-        let howAreYou = ["how are you", "how are you doing", "how is it going"]
-        let food = ["hungry", "food", "eat", "snack"]
-        let play = ["play", "fun", "game", "bored"]
+        Respond as the pet in a way that reflects your species, habitat, and current status (\(pet.species.status.rawValue)). 
+        Keep the response relatively short (1-3 sentences) and stay in character.
+        """
         
-        if greeting.contains(where: { message.contains($0) }) {
-            return "Hello friend! I am \(pet.name), the \(pet.species.name). It's good to see you!"
-        } else if howAreYou.contains(where: { message.contains($0) }) {
-            return "I am doing well, thanks for asking! Just thinking about my friends in the \(pet.species.habitat)."
-        } else if food.contains(where: { message.contains($0) }) {
-            return "I could go for a snack! Maybe something we find in the \(pet.species.habitat)?"
-        } else if play.contains(where: { message.contains($0) }) {
-            return "I love to play! But I also like to learn about how to protect my home. Do you want to learn a fun fact?"
+        do {
+            let responseText = try await callGeminiAPI(prompt: prompt)
+            return responseText
+        } catch {
+            print("Error generating AI response: \(error)")
+            return "Sorry, I'm having trouble thinking right now. Maybe we can chat later?"
+        }
+    }
+    
+    func generateGreeting(for pet: Pet) async -> String {
+        // Find latest news for this species
+        let newsList = speciesNews[pet.species.id] ?? []
+        let latestNews = newsList.sorted(by: { $0.date > $1.date }).first
+        
+        let newsContext: String
+        if let news = latestNews {
+            newsContext = "Latest news headline: \"\(news.title)\". Sentiment: \(news.sentiment.rawValue)."
         } else {
-            // Default response using persona
-            return "That is interesting! \(pet.persona) By the way, did you know that \(pet.species.population) of us are left in the wild?"
+            newsContext = "There is no specific recent news."
+        }
+        
+        let prompt = """
+        You are \(pet.name), a \(pet.species.name).
+        Your current happiness is \(Int(pet.happiness * 100))%.
+        \(newsContext)
+        
+        Write a short, single-sentence greeting (max 15 words) to display in a speech bubble to your owner.
+        
+        Rules:
+        1. If the latest news is Negative, you MUST mention it briefly and sound sad or worried.
+        2. If the latest news is Positive, sound excited about it.
+        3. If there is no significant news, reflect your happiness level:
+           - Low happiness (< 40%): Sound sad or ask for food/play.
+           - High happiness (> 70%): Sound happy and energetic.
+           - Medium happiness: Friendly and calm.
+        """
+        
+        do {
+            let responseText = try await callGeminiAPI(prompt: prompt)
+            return responseText.trimmingCharacters(in: .whitespacesAndNewlines)
+        } catch {
+            print("Error generating greeting: \(error)")
+            return "Hello friend!"
         }
     }
 }
