@@ -72,7 +72,7 @@ class PetService: ObservableObject {
     
     // Helper function to call Gemini REST API
     private func callGeminiAPI(prompt: String) async throws -> String {
-        let modelName = "gemini-2.0-flash" 
+        let modelName = "gemini-3-flash-preview" 
         let urlString = "https://generativelanguage.googleapis.com/v1beta/models/\(modelName):generateContent?key=\(Secrets.apiKey)"
         
         guard let url = URL(string: urlString) else {
@@ -261,8 +261,8 @@ class PetService: ObservableObject {
         if pet.species.name == "Polar Bear" {
             personalityInstruction = """
             Personality: You are shy, soft-spoken, and curious, but very affectionate once you open up.
-            Tone: Use gentle language. You might hesitate slightly (e.g., 'um...', 'maybe...') or express curiosity.
-            Example: "Um... hi there! I was just wondering... are you here to play?"
+            Tone: Use gentle language. 
+            Example: "Hi there! I was just wondering... do you wanna build a snowman with me?"
             """
         } else {
             personalityInstruction = "Personality: \(pet.persona)"
@@ -284,7 +284,7 @@ class PetService: ObservableObject {
             
             Write a short greeting (max 15 words) specifically about this news.
             REQUIRED: You MUST include a Markdown link to the news using exactly this format: `[summary of news](app://news)`.
-            Example: "Um... did you hear? [Polar bears are recovering](app://news)... that's good, right?"
+            Example: "[Polar bears are recovering](app://news)... this news makes me happy"
             """
         } else {
             // Standard Random Greeting with Personality
@@ -383,7 +383,7 @@ class PetService: ObservableObject {
     }
 
     private func callGeminiForNews(prompt: String) async throws -> String {
-        let modelName = "gemini-2.0-flash"
+        let modelName = "gemini-3-flash-preview"
         let urlString = "https://generativelanguage.googleapis.com/v1beta/models/\(modelName):generateContent?key=\(Secrets.apiKey)"
         
         guard let url = URL(string: urlString) else { throw URLError(.badURL) }
